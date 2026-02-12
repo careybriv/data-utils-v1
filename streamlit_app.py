@@ -229,10 +229,18 @@ if password:
                     increment_usage(password)
                     st.success("✅ Audit Complete! Credit Deducted.")
                     
+                    # SAFE DATA HANDLING to prevent crashes
+                    rent_display = str(data.get("monthly_rent", "N/A"))
+                    if "$" in rent_display:
+                         rent_display = rent_display.split("$")[0] + "..."
+                    
+                    risk_display = str(data.get("risk_score", "0"))
+                    deposit_display = str(data.get("security_deposit", "N/A"))
+
                     col1, col2, col3 = st.columns(3)
-                    col1.metric("Risk Score", f"{data.get('risk_score')}/10")
-                    col2.metric("Monthly Rent", data.get("monthly_rent").split("$")[0] + "...") 
-                    col3.metric("Deposit", data.get("security_deposit"))
+                    col1.metric("Risk Score", f"{risk_display}/10")
+                    col2.metric("Monthly Rent", rent_display) 
+                    col3.metric("Deposit", deposit_display)
                     
                     st.download_button(
                         label="📥 Download Excel Report",
