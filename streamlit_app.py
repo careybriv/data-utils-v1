@@ -26,21 +26,37 @@ hide_st_style = """
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- HUMAN ERROR TRANSLATOR ---
+# --- HUMAN ERROR TRANSLATOR (The Interface between Code and Client) ---
 def translate_error(e):
     err_str = str(e).lower()
+    
+    # 1. Connection / Internet
     if "11001" in err_str or "connection" in err_str or "socket" in err_str:
-        return "🌐 No Internet Connection. Please check your WiFi."
+        return "🌐 Connection Lost. Please check your internet."
+    
+    # 2. Permissions / API
     elif "403" in err_str or "api key" in err_str:
-        return "🔑 Invalid License Key. Please check your settings."
+        return "🔑 License Error. Please contact Redline Support."
+    
+    # 3. Server Overload
     elif "429" in err_str or "resource" in err_str:
-        return "⏳ Server is busy. Retrying automatically..."
+        return "⏳ AI Server is busy. Please wait 10 seconds and try again."
+    
+    # 4. Bad PDF
     elif "pdf" in err_str or "syntax" in err_str:
-        return "📄 This PDF is corrupted or password protected."
+        return "📄 The PDF file appears to be corrupted or password protected."
+    
+    # 5. Data Format (The Excel Error)
+    elif "valueerror" in err_str and "excel" in err_str:
+        return "⚠️ Formatting Error. The AI report could not be saved to Excel."
+        
+    # 6. The "Unpredictable" Catch-All
     else:
-        return f"⚠️ Error: {str(e)}"
+        # Log the real error to the console for YOU, but show this to the Client
+        print(f"CRITICAL ERROR: {err_str}") 
+        return "⚠️ An unexpected system error occurred. Please refresh and try again."
 
-# --- DATABASE LOGIC (GOOGLE SHEETS) ---
+# --- DATABASE LOGIC ---
 def connect_to_sheet():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -53,10 +69,10 @@ def connect_to_sheet():
         return None
 
 def check_access(code):
-    sheet = connect_to_sheet()
-    if not sheet:
-        return "⚠️ Database Connection Failed.", None, None
     try:
+        sheet = connect_to_sheet()
+        if not sheet:
+            return "⚠️ Database Connection Failed. Contact Support.", None, None
         records = sheet.get_all_records()
         for row in records:
             if str(row['username']) == code:
@@ -69,7 +85,7 @@ def check_access(code):
                 return "OK", used, limit
         return "❌ Invalid Access Code.", None, None
     except Exception as e:
-        return "⚠️ Database Error. Try again.", None, None
+        return "⚠️ Database Error. Please try again later.", None, None
 
 def increment_usage(code):
     try:
@@ -89,6 +105,7 @@ def get_gemini_client():
         return None
 
 def create_excel_bytes(filename, data):
+    # This function is now SAFE against list errors
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Redline Analysis"
@@ -96,23 +113,20 @@ def create_excel_bytes(filename, data):
     headers = ["Tenant", "Rent", "Deposit", "Risk Score", "Risk Summary"]
     ws.append(headers)
     
-    # --- SAFE DATA EXTRACTION (THE FIX) ---
-    # 1. Handle Risk Flags (Convert List to String)
+    # SAFE EXTRACTION
     raw_flags = data.get("risk_flags", "None")
     if isinstance(raw_flags, list):
         risk_flags_str = ", ".join([str(flag) for flag in raw_flags])
     else:
         risk_flags_str = str(raw_flags)
 
-    # 2. Handle other fields safely
     ws.append([
         str(data.get("tenant_name", "N/A")), 
         str(data.get("monthly_rent", "N/A")), 
         str(data.get("security_deposit", "N/A")), 
         str(data.get("risk_score", "0")), 
-        risk_flags_str  # <--- Now it is safe text
+        risk_flags_str
     ])
-    # ---------------------------------------
     
     header_fill = PatternFill(start_color="8B0000", end_color="8B0000", fill_type="solid")
     for cell in ws[1]:
@@ -126,6 +140,10 @@ def create_excel_bytes(filename, data):
     ws.column_dimensions['D'].width = 15
     ws.column_dimensions['E'].width = 100
     
+    for row in ws.iter_rows(min_row=2, max_row=2):
+        for cell in row:
+            cell.alignment = Alignment(wrap_text=True, vertical='top')
+
     buffer = io.BytesIO()
     wb.save(buffer)
     buffer.seek(0)
@@ -134,41 +152,35 @@ def create_excel_bytes(filename, data):
 def analyze_lease(uploaded_file):
     client = get_gemini_client()
     if not client: 
-        st.error(translate_error("403 API key not valid"))
-        return None, None
+        raise Exception("API Key Missing")
     
+    # 1. Upload File
     with st.spinner("Encrypting & Uploading to Neural Engine..."):
-        try:
-            bytes_data = uploaded_file.getvalue()
-            # Use a generic name to avoid path issues
-            temp_filename = "temp_upload.pdf" 
-            with open(temp_filename, "wb") as f:
-                f.write(bytes_data)
-            cloud_file = client.files.upload(file=temp_filename)
-        except Exception as e:
-            st.error(translate_error(e))
-            return None, None
+        bytes_data = uploaded_file.getvalue()
+        temp_filename = "temp_upload.pdf" 
+        with open(temp_filename, "wb") as f:
+            f.write(bytes_data)
+        cloud_file = client.files.upload(file=temp_filename)
 
+    # 2. Wait for Processing
     while cloud_file.state.name == "PROCESSING":
         time.sleep(1)
         cloud_file = client.files.get(name=cloud_file.name)
 
     if cloud_file.state.name == "FAILED":
-        st.error(translate_error("pdfminer.pdfparser.PDFSyntaxError"))
-        return None, None
+        raise Exception("PDF Syntax Error (Corrupted File)")
 
-    # THE BRAIN (Use secrets if available, else fallback to hardcoded for testing)
+    # 3. Get Prompt from Secrets (The Brain)
     try:
         sys_prompt = st.secrets["prompts"]["system_instruction"]
     except:
-        sys_prompt = """
-        Role: Real Estate Attorney. Extract: tenant_name, monthly_rent, security_deposit, risk_score (0-10), risk_flags.
-        Output JSON only.
-        """
+        # Fallback if secrets missing
+        sys_prompt = "Extract tenant_name, monthly_rent, security_deposit, risk_score, risk_flags. JSON."
     
     data = None
     max_retries = 3
     
+    # 4. Generate Content
     with st.spinner("🤖 AI Auditing Lease (Gemini 2.0 Flash)..."):
         for attempt in range(max_retries):
             try:
@@ -182,13 +194,19 @@ def analyze_lease(uploaded_file):
             except exceptions.ResourceExhausted:
                 time.sleep(5) 
             except Exception as e:
-                st.error(translate_error(e))
-                break
+                # If it's the last attempt, raise the error to be caught by the main loop
+                if attempt == max_retries - 1:
+                    raise e
+                time.sleep(1)
         
+        # Cleanup
         try:
             client.files.delete(name=cloud_file.name)
         except:
             pass
+
+    if not data:
+        raise Exception("AI could not extract data.")
 
     return data, create_excel_bytes(uploaded_file.name, data)
 
@@ -221,7 +239,6 @@ if password and status == "OK":
         st.session_state["last_file_id"] = None
         
     if uploaded_file and uploaded_file.file_id != st.session_state["last_file_id"]:
-        # New file detected, clear old results
         st.session_state["last_file_id"] = uploaded_file.file_id
         if "audit_result" in st.session_state:
             del st.session_state["audit_result"]
@@ -233,20 +250,28 @@ if password and status == "OK":
         
         # A. The Trigger Button
         if st.button("🚀 Run Audit (-1 Credit)", type="primary"):
-            data, excel_file = analyze_lease(uploaded_file)
             
-            if data:
-                # 1. Save to Memory (Session State)
+            # --- THE SAFETY BLANKET (Try/Except Block) ---
+            try:
+                # 1. Run the Analysis
+                data, excel_file = analyze_lease(uploaded_file)
+                
+                # 2. Save to Memory
                 st.session_state["audit_result"] = data
                 st.session_state["audit_excel"] = excel_file
                 
-                # 2. Deduct Credit
+                # 3. Deduct Credit
                 increment_usage(password)
                 st.toast("✅ Credit Deducted")
-            else:
-                st.error("Audit Failed. No credit deducted.")
+                
+            except Exception as e:
+                # THIS IS THE CATCH-ALL
+                # It catches Excel errors, AI errors, Math errors, anything.
+                friendly_message = translate_error(e)
+                st.error(friendly_message)
+            # ---------------------------------------------
 
-        # B. The Persistent Display (Outside the button)
+        # B. The Persistent Display
         if "audit_result" in st.session_state:
             data = st.session_state["audit_result"]
             excel_bytes = st.session_state["audit_excel"]
