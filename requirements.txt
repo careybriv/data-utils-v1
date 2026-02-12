@@ -2,3 +2,5 @@ streamlit
 google-genai
 openpyxl
 google-api-core
+gspread
+oauth2client
