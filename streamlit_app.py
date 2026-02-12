@@ -95,11 +95,24 @@ def create_excel_bytes(filename, data):
     
     headers = ["Tenant", "Rent", "Deposit", "Risk Score", "Risk Summary"]
     ws.append(headers)
+    
+    # --- SAFE DATA EXTRACTION (THE FIX) ---
+    # 1. Handle Risk Flags (Convert List to String)
+    raw_flags = data.get("risk_flags", "None")
+    if isinstance(raw_flags, list):
+        risk_flags_str = ", ".join([str(flag) for flag in raw_flags])
+    else:
+        risk_flags_str = str(raw_flags)
+
+    # 2. Handle other fields safely
     ws.append([
-        data.get("tenant_name"), data.get("monthly_rent"), 
-        data.get("security_deposit"), data.get("risk_score"), 
-        data.get("risk_flags")
+        str(data.get("tenant_name", "N/A")), 
+        str(data.get("monthly_rent", "N/A")), 
+        str(data.get("security_deposit", "N/A")), 
+        str(data.get("risk_score", "0")), 
+        risk_flags_str  # <--- Now it is safe text
     ])
+    # ---------------------------------------
     
     header_fill = PatternFill(start_color="8B0000", end_color="8B0000", fill_type="solid")
     for cell in ws[1]:
