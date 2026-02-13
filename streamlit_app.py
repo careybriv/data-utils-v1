@@ -16,25 +16,48 @@ PAGE_ICON = "🏢"
 # --- SETUP PAGE ---
 st.set_page_config(page_title=PAGE_TITLE, page_icon=PAGE_ICON, layout="centered")
 
-# --- CSS OVERRIDES (THE FIX) ---
-# 1. Hides the GitHub Icon & "Manage App" button
-# 2. Hides the "3 Dots" Menu (Preventing "View Source")
-# 3. Hides the "Made with Streamlit" Footer
-# 4. Forces clean spacing
+# --- CSS OVERRIDES (NUCLEAR OPTION: NO LOGOS, NO DARK MODE ISSUES) ---
 hide_st_style = """
     <style>
-    /* HIDE TOP BAR (Where the Github Icon lives) */
-    header {visibility: hidden !important;}
-    [data-testid="stToolbar"] {visibility: hidden !important;}
+    /* 1. HIDE THE MAIN HEADER (Where the logo lives) */
+    header {
+        visibility: hidden !important;
+        height: 0px !important;
+    }
     
-    /* HIDE MENU (The 3 dots) */
-    #MainMenu {visibility: hidden !important;}
+    /* 2. HIDE THE TOOLBAR (The 3 dots + "Manage App") */
+    [data-testid="stToolbar"] {
+        visibility: hidden !important;
+        display: none !important;
+    }
     
-    /* HIDE FOOTER */
-    footer {visibility: hidden !important;}
+    /* 3. HIDE THE COLORED DECORATION BAR AT TOP */
+    [data-testid="stDecoration"] {
+        visibility: hidden !important;
+        display: none !important;
+    }
+
+    /* 4. HIDE THE STATUS WIDGET (Running man icon) */
+    [data-testid="stStatusWidget"] {
+        visibility: hidden !important;
+        display: none !important;
+    }
+
+    /* 5. HIDE THE FOOTER */
+    footer {
+        visibility: hidden !important;
+        display: none !important;
+    }
+
+    /* 6. HIDE THE "DEPLOY" BUTTON */
+    .stDeployButton {
+        display: none !important;
+    }
     
-    /* REMOVE TOP PADDING (So the logo is at the very top) */
-    .block-container {padding-top: 2rem;}
+    /* 7. PUSH CONTENT UP */
+    .block-container {
+        padding-top: 1rem !important;
+    }
     
     /* LEGAL BOX STYLING */
     .legal-box {
@@ -43,7 +66,7 @@ hide_st_style = """
         border-radius: 10px;
         border-left: 5px solid #ff4b4b;
         font-size: 14px;
-        color: #31333F; /* Forces dark text even if theme breaks */
+        color: #31333F; 
     }
     </style>
 """
@@ -183,7 +206,8 @@ def analyze_lease(uploaded_file):
     client = get_gemini_client()
     if not client: raise Exception("API Key Missing")
     
-    with st.spinner("Encrypting & Uploading to Neural Engine..."):
+    # --- STEP 1: UPLOAD (White Label Message) ---
+    with st.spinner("🔒 Encrypting & Uploading Document..."):
         bytes_data = uploaded_file.getvalue()
         temp_filename = "temp_upload.pdf" 
         with open(temp_filename, "wb") as f:
@@ -204,7 +228,8 @@ def analyze_lease(uploaded_file):
     data = None
     max_retries = 3
     
-    with st.spinner("🔍 AI Auditing Lease (Gemini 2.0 Flash)..."):
+    # --- STEP 2: ANALYZE (White Label Message) ---
+    with st.spinner("⚙️ Auditing Lease Risks & Clauses..."):
         for attempt in range(max_retries):
             try:
                 response = client.models.generate_content(
