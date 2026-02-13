@@ -16,27 +16,44 @@ PAGE_ICON = "🏢"
 # --- SETUP PAGE ---
 st.set_page_config(page_title=PAGE_TITLE, page_icon=PAGE_ICON, layout="centered")
 
-# --- CUSTOM CSS (To fix spacing) ---
-st.markdown("""
+# --- CSS OVERRIDES (THE FIX) ---
+# 1. Hides the GitHub Icon & "Manage App" button
+# 2. Hides the "3 Dots" Menu (Preventing "View Source")
+# 3. Hides the "Made with Streamlit" Footer
+# 4. Forces clean spacing
+hide_st_style = """
     <style>
-    /* Clean up the top white space */
+    /* HIDE TOP BAR (Where the Github Icon lives) */
+    header {visibility: hidden !important;}
+    [data-testid="stToolbar"] {visibility: hidden !important;}
+    
+    /* HIDE MENU (The 3 dots) */
+    #MainMenu {visibility: hidden !important;}
+    
+    /* HIDE FOOTER */
+    footer {visibility: hidden !important;}
+    
+    /* REMOVE TOP PADDING (So the logo is at the very top) */
     .block-container {padding-top: 2rem;}
-    /* Make the legal text readable */
+    
+    /* LEGAL BOX STYLING */
     .legal-box {
         background-color: #f0f2f6;
         padding: 20px;
         border-radius: 10px;
         border-left: 5px solid #ff4b4b;
         font-size: 14px;
+        color: #31333F; /* Forces dark text even if theme breaks */
     }
     </style>
-""", unsafe_allow_html=True)
+"""
+st.markdown(hide_st_style, unsafe_allow_html=True)
 
 # --- SESSION STATE ---
 if "legal_accepted" not in st.session_state:
     st.session_state["legal_accepted"] = False
 
-# --- LEGAL TEXT (CLEAN FORMAT) ---
+# --- LEGAL TEXT ---
 TERMS_OF_USE_CLEAN = """
 <div class="legal-box">
     <strong>1. Service Scope</strong><br>
@@ -145,14 +162,14 @@ def create_excel_bytes(filename, data):
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
     
-    # WIDER COLUMNS (Fixes the mess)
+    # WIDER COLUMNS
     ws.column_dimensions['A'].width = 25
-    ws.column_dimensions['B'].width = 55  # Very wide for rent math
+    ws.column_dimensions['B'].width = 55  
     ws.column_dimensions['C'].width = 25
     ws.column_dimensions['D'].width = 15
-    ws.column_dimensions['E'].width = 90  # Huge for summary
+    ws.column_dimensions['E'].width = 90  
 
-    # WRAP TEXT EVERYWHERE
+    # WRAP TEXT
     for row in ws.iter_rows(min_row=2, max_row=3):
         for cell in row:
             cell.alignment = Alignment(vertical='top', wrap_text=True)
@@ -237,7 +254,7 @@ if password and status == "OK":
         
         # Display Clean HTML Box
         st.markdown(TERMS_OF_USE_CLEAN, unsafe_allow_html=True)
-        st.markdown("") # Spacer
+        st.markdown("") 
         
         col_space, col_btn = st.columns([2, 1])
         if col_btn.button("✅ I Agree & Enter", type="primary", use_container_width=True):
@@ -249,7 +266,6 @@ if password and status == "OK":
         st.title("Redline AI | Enterprise")
         uploaded_file = st.file_uploader("Upload Lease Agreement (PDF)", type=["pdf"])
 
-        # Reset for new files
         if "last_file_id" not in st.session_state:
             st.session_state["last_file_id"] = None
         if uploaded_file and uploaded_file.file_id != st.session_state["last_file_id"]:
@@ -275,7 +291,7 @@ if password and status == "OK":
                 
                 st.markdown("---")
                 
-                # 1. High Level Numbers (Row 1)
+                # 1. High Level Numbers
                 c1, c2 = st.columns(2)
                 
                 # Risk Score (Color Coded)
@@ -286,14 +302,11 @@ if password and status == "OK":
                 # Deposit
                 c2.markdown(f"**Deposit:** {str(data.get('security_deposit', 'N/A'))}")
                 
-                # 2. Detailed Breakdown (Row 2 - Full Width Cards)
-                # We use st.info/warning instead of Metric to handle long text gracefully
-                
+                # 2. Detailed Breakdown
                 st.markdown("**💰 Monthly Rent Liability**")
                 st.info(str(data.get("monthly_rent", "N/A")))
                 
                 st.markdown("**🚩 Critical Risk Summary**")
-                # Red box for high risk, orange for medium
                 if score >= 6:
                     st.error(data.get("risk_flags", "No summary."))
                 else:
